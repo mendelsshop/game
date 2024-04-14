@@ -1,11 +1,43 @@
-use bevy::{log, prelude::*, window::PrimaryWindow};
+use bevy::{app::AppExit, log, prelude::*, window::PrimaryWindow};
 use rand::random;
-
+pub const ENEMY_SIZE: f32 = 25.0; // This is the enemy sprite size.
+pub const PLAYER_SIZE: f32 = 25.0; // This is the player sprite size.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum JumpInnerDirection {
     Go,
     Wait(u8),
     Reset,
+}
+#[derive(States, Default, Debug, Clone, PartialEq, Eq, Hash)]
+enum MyPausedState {
+    #[default]
+    Paused,
+    Running,
+}
+
+pub struct Playing;
+
+impl Plugin for Playing {
+    fn build(&self, app: &mut App) {
+        app.add_systems(
+            Update,
+            (
+                jump_system_recieve,
+                jump_system,
+                enemy_movement,
+                enemy_bounds,
+                collision_detection,
+            )
+                .run_if(in_state(MyPausedState::Running)),
+        );
+    }
+}
+
+pub struct Paused;
+impl Plugin for Paused {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Update, (reset_game).run_if(in_state(MyPausedState::Paused)));
+    }
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -14,7 +46,15 @@ pub enum JumpDirection {
     Down(JumpInnerDirection),
     None,
 }
-
+fn toggle_pause_game(
+    state: Res<State<MyPausedState>>,
+    mut next_state: ResMut<NextState<MyPausedState>>,
+) {
+    match state.get() {
+        MyPausedState::Paused => next_state.set(MyPausedState::Running),
+        MyPausedState::Running => next_state.set(MyPausedState::Paused),
+    }
+}
 enum CactusSize {
     Long,
     Short,
@@ -77,7 +117,7 @@ fn spawn_enemies(
     let window = window_query.get_single().unwrap();
     commands.spawn((
         SpriteBundle {
-            // transform: Transform::from_xyz(100.0, 0.0, 0.0),
+            transform: Transform::from_xyz(100.0, 0.0, 0.0),
             sprite: Sprite {
                 custom_size: Some(Vec2::new(0.25, 0.25) * SPRITE_SIZE),
                 ..Default::default()
@@ -140,6 +180,12 @@ fn spawn_enemies(
     // ));
 }
 
+fn reset_game(input: Res<ButtonInput<KeyCode>>, mut next_state: ResMut<NextState<MyPausedState>>) {
+    if input.just_pressed(KeyCode::Space) {
+        next_state.set(MyPausedState::Running);
+    }
+}
+
 fn jump_system_recieve(input: Res<ButtonInput<KeyCode>>, mut player_query: Query<&mut Dino>) {
     if let Ok(mut transform) = player_query.get_single_mut() {
         if transform.jump == JumpDirection::None {
@@ -158,23 +204,23 @@ fn jump_system_recieve(input: Res<ButtonInput<KeyCode>>, mut player_query: Query
 
 fn jump_system(mut player_query: Query<(&mut Transform, &mut Dino)>) {
     for (mut tranform, mut player) in &mut player_query {
-    println!("{:?}", player.jump);
+        println!("{:?}", player.jump);
 
         match player.jump {
             JumpDirection::Up(JumpInnerDirection::Go) => {
-                tranform.translation.y += 20.;
+                tranform.translation.y += 40.;
                 player.jump = JumpDirection::Up(JumpInnerDirection::Wait(15));
             }
             JumpDirection::Down(JumpInnerDirection::Reset) => {
-                tranform.translation.y += 20.;
+                tranform.translation.y += 40.;
                 player.jump = JumpDirection::None;
-            } 
+            }
             JumpDirection::Down(JumpInnerDirection::Go) => {
-                tranform.translation.y -= 20.;
+                tranform.translation.y -= 40.;
                 player.jump = JumpDirection::Down(JumpInnerDirection::Wait(15));
             }
             JumpDirection::Up(JumpInnerDirection::Reset) => {
-                tranform.translation.y -= 20.;
+                tranform.translation.y -= 40.;
                 player.jump = JumpDirection::None;
             }
             JumpDirection::Up(JumpInnerDirection::Wait(0)) => {
@@ -184,10 +230,10 @@ fn jump_system(mut player_query: Query<(&mut Transform, &mut Dino)>) {
                 player.jump = JumpDirection::Down(JumpInnerDirection::Reset);
             }
             JumpDirection::Up(JumpInnerDirection::Wait(n)) => {
-                player.jump = JumpDirection::Up(JumpInnerDirection::Wait(n-1));
+                player.jump = JumpDirection::Up(JumpInnerDirection::Wait(n - 1));
             }
             JumpDirection::Down(JumpInnerDirection::Wait(n)) => {
-                player.jump = JumpDirection::Down(JumpInnerDirection::Wait(n-1));
+                player.jump = JumpDirection::Down(JumpInnerDirection::Wait(n - 1));
             }
             JumpDirection::None => {}
         }
@@ -199,7 +245,7 @@ fn enemy_movement(mut enemy_query: Query<(&mut Transform, &Cactus)>, time: Res<T
     for (mut transform, enemy) in enemy_query.iter_mut() {
         println!("{}", time.delta_seconds());
         if enemy.direction == Direction::Left {
-            transform.translation.x -= 125. * time.delta_seconds();
+            transform.translation.x -= 225. * time.delta_seconds();
         } else {
             transform.translation.x = 201.;
         }
@@ -215,7 +261,7 @@ fn enemy_bounds(
     let x_min = 0.0 + half_enemy_size;
     let x_max = window.width() - half_enemy_size;
 
-    for (mut transform, mut enemy) in enemy_query.iter_mut() {
+    for (transform, mut enemy) in enemy_query.iter_mut() {
         let translation = transform.translation;
         if translation.x < -200.0 {
             enemy.direction = Direction::Right;
@@ -225,9 +271,31 @@ fn enemy_bounds(
         }
     }
 }
+fn collision_detection(
+    mut commands: Commands,
+    enemy_query: Query<&Transform, With<Cactus>>,
+    player_query: Query<&Transform, With<Dino>>,
+    state: Res<State<MyPausedState>>,
+    mut next_state: ResMut<NextState<MyPausedState>>,
+) {
+    if let Ok(player) = player_query.get_single() {
+        for enemy_transform in enemy_query.iter() {
+            let distance = player.translation.distance(enemy_transform.translation);
+
+            let player_radius = PLAYER_SIZE / 2.0;
+            let enemy_radius = ENEMY_SIZE / 2.0;
+            if distance < player_radius + enemy_radius {
+                println!("Enemy hit player! Game Over!");
+                toggle_pause_game(state, next_state)
+            }
+            break;
+        }
+    }
+}
 
 fn main() {
     App::new()
+        .init_state::<MyPausedState>()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Topsy Turvey T-Rex game".to_string(),
@@ -236,11 +304,8 @@ fn main() {
             ..Default::default()
         }))
         .add_systems(Startup, spawn_camera)
-        .add_systems(Startup, spawn_player)
-        .add_systems(Startup, spawn_enemies)
-        .add_systems(Update, jump_system_recieve)
-        .add_systems(Update, jump_system)
-        .add_systems(Update, enemy_movement)
-        .add_systems(Update, enemy_bounds)
+        .add_systems(Startup, (spawn_player, spawn_enemies).chain())
+        .add_plugins(Playing)
+        .add_plugins(Paused)
         .run();
 }
