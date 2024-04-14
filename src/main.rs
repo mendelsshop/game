@@ -30,6 +30,8 @@ impl Plugin for Playing {
             )
                 .run_if(in_state(MyPausedState::Running)),
         );
+        app.add_systems(OnEnter (MyPausedState::Running), spawn_enemies);
+        app.add_systems(OnExit (MyPausedState::Running), despawn_all_enemies);
     }
 }
 
@@ -39,7 +41,14 @@ impl Plugin for Paused {
         app.add_systems(Update, (reset_game).run_if(in_state(MyPausedState::Paused)));
     }
 }
-
+fn despawn_all_enemies(
+    mut commands: Commands,
+    query: Query<Entity, With<Cactus>>,
+) {
+    for entity in query.iter() {
+        commands.entity(entity).despawn();
+    }
+}
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum JumpDirection {
     Up(JumpInnerDirection),
@@ -49,6 +58,7 @@ pub enum JumpDirection {
 fn toggle_pause_game(
     state: Res<State<MyPausedState>>,
     mut next_state: ResMut<NextState<MyPausedState>>,
+
 ) {
     match state.get() {
         MyPausedState::Paused => next_state.set(MyPausedState::Running),
@@ -62,7 +72,7 @@ enum CactusSize {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 enum Direction {
     Left,
-    Right,
+    Right(usize),
 }
 #[derive(Component, Debug)]
 struct Dino {
@@ -95,9 +105,10 @@ fn spawn_player(
         SpriteBundle {
             // TODO: top left
 
-            // transform: Transform::from_xyz(-window.width() + 100.0, window.height(), 0.0),
+            transform: Transform::from_xyz( -200.0, 200.0, 0.0),
             sprite: Sprite {
                 custom_size: Some(Vec2::new(0.25, 0.25) * SPRITE_SIZE),
+                flip_y: true,
                 ..Default::default()
             },
             texture: asset_server.load("dino.png"),
@@ -117,7 +128,7 @@ fn spawn_enemies(
     let window = window_query.get_single().unwrap();
     commands.spawn((
         SpriteBundle {
-            transform: Transform::from_xyz(100.0, 0.0, 0.0),
+            transform: Transform::from_xyz(100.0 * random::<f32>(), 200.0, 0.0),
             sprite: Sprite {
                 custom_size: Some(Vec2::new(0.25, 0.25) * SPRITE_SIZE),
                 ..Default::default()
@@ -127,61 +138,63 @@ fn spawn_enemies(
         },
         Cactus {
             size: CactusSize::Long,
+            direction: Direction::Right(random::<usize>() % 45),
+        },
+    ));
+    commands.spawn((
+        SpriteBundle {
+            transform: Transform::from_xyz(20000.0, 200.0, 0.0),
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(0.25, 0.25) * SPRITE_SIZE),
+                ..Default::default()
+            },
+            texture: asset_server.load("cactus_long.png"),
+            ..Default::default()
+        },
+        Cactus {
+            size: CactusSize::Long,
+            direction: Direction::Right(random::<usize>() % 50),
+        },
+    ));
+    commands.spawn((
+        SpriteBundle {
+            transform: Transform::from_xyz(20000.0, 200.0, 0.0),
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(0.25, 0.25) * SPRITE_SIZE),
+                ..Default::default()
+            },
+            texture: asset_server.load("cactus_short.png"),
+            ..Default::default()
+        },
+        Cactus {
+            size: CactusSize::Short,
+            direction: Direction::Right(random::<usize>() % 100),
+        },
+    ));
+    commands.spawn((
+        SpriteBundle {
+            transform: Transform::from_xyz(20000.0, 200.0, 0.0),
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(0.25, 0.25) * SPRITE_SIZE),
+                ..Default::default()
+            },
+            texture: asset_server.load("cactus_short.png"),
+            ..Default::default()
+        },
+        Cactus {
+            size: CactusSize::Short,
             direction: Direction::Left,
         },
     ));
-    // commands.spawn((
-    //     SpriteBundle {
-    //         // transform: Transform::from_xyz(
-    //         //     window.width() * random::<f32>(),
-    //         //     window.height() / 2.0,
-    //         //     0.0,
-    //         // ),
-    //         sprite: Sprite {
-    //             custom_size: Some(Vec2::new(0.25, 0.25) * SPRITE_SIZE),
-    //             ..Default::default()
-    //         },
-    //         texture: asset_server.load("cactus_long.png"),
-    //         ..Default::default()
-    //     },
-    //     Cactus(CactusSize::Long),
-    // ));
-    // commands.spawn((
-    //     SpriteBundle {
-    //         transform: Transform::from_xyz(
-    //             window.width() * random::<f32>(),
-    //             window.height() / 2.0,
-    //             0.0,
-    //         ),
-    //         sprite: Sprite {
-    //             custom_size: Some(Vec2::new(0.25, 0.25) * SPRITE_SIZE),
-    //             ..Default::default()
-    //         },
-    //         texture: asset_server.load("cactus_short.png"),
-    //         ..Default::default()
-    //     },
-    //     Cactus(CactusSize::Short),
-    // ));
-    // commands.spawn((
-    //     SpriteBundle {
-    //         transform: Transform::from_xyz(
-    //             window.width() * random::<f32>(),
-    //             window.height() / 2.0,
-    //             0.0,
-    //         ),
-    //         sprite: Sprite {
-    //             custom_size: Some(Vec2::new(0.25, 0.25) * SPRITE_SIZE),
-    //             ..Default::default()
-    //         },
-    //         texture: asset_server.load("cactus_short.png"),
-    //         ..Default::default()
-    //     },
-    //     Cactus(CactusSize::Short),
-    // ));
 }
 
-fn reset_game(input: Res<ButtonInput<KeyCode>>, mut next_state: ResMut<NextState<MyPausedState>>) {
+fn reset_game(
+    mut commands: Commands,
+    window_query: Query<&Window, With<PrimaryWindow>>,
+    asset_server: Res<AssetServer>,
+    input: Res<ButtonInput<KeyCode>>, mut next_state: ResMut<NextState<MyPausedState>>) {
     if input.just_pressed(KeyCode::Space) {
+        spawn_enemies(commands, window_query, asset_server);
         next_state.set(MyPausedState::Running);
     }
 }
@@ -189,14 +202,11 @@ fn reset_game(input: Res<ButtonInput<KeyCode>>, mut next_state: ResMut<NextState
 fn jump_system_recieve(input: Res<ButtonInput<KeyCode>>, mut player_query: Query<&mut Dino>) {
     if let Ok(mut transform) = player_query.get_single_mut() {
         if transform.jump == JumpDirection::None {
-            if input.just_pressed(KeyCode::ArrowUp) {
+            if input.just_pressed(KeyCode::Space) || input.just_pressed(KeyCode::ArrowUp) {
                 transform.jump = JumpDirection::Down(JumpInnerDirection::Go)
-
-                // Jumping down!
             }
-            if input.just_pressed(KeyCode::Space) || input.just_pressed(KeyCode::ArrowDown) {
+            if  input.just_pressed(KeyCode::ArrowDown) {
                 transform.jump = JumpDirection::Up(JumpInnerDirection::Go)
-                // Jumping up!
             }
         }
     }
@@ -204,12 +214,11 @@ fn jump_system_recieve(input: Res<ButtonInput<KeyCode>>, mut player_query: Query
 
 fn jump_system(mut player_query: Query<(&mut Transform, &mut Dino)>) {
     for (mut tranform, mut player) in &mut player_query {
-        println!("{:?}", player.jump);
 
         match player.jump {
             JumpDirection::Up(JumpInnerDirection::Go) => {
                 tranform.translation.y += 40.;
-                player.jump = JumpDirection::Up(JumpInnerDirection::Wait(15));
+                player.jump = JumpDirection::Up(JumpInnerDirection::Wait(25));
             }
             JumpDirection::Down(JumpInnerDirection::Reset) => {
                 tranform.translation.y += 40.;
@@ -217,7 +226,7 @@ fn jump_system(mut player_query: Query<(&mut Transform, &mut Dino)>) {
             }
             JumpDirection::Down(JumpInnerDirection::Go) => {
                 tranform.translation.y -= 40.;
-                player.jump = JumpDirection::Down(JumpInnerDirection::Wait(15));
+                player.jump = JumpDirection::Down(JumpInnerDirection::Wait(25));
             }
             JumpDirection::Up(JumpInnerDirection::Reset) => {
                 tranform.translation.y -= 40.;
@@ -240,14 +249,17 @@ fn jump_system(mut player_query: Query<(&mut Transform, &mut Dino)>) {
     }
 }
 
-const ENEMY_SPEED: f32 = 25.0;
-fn enemy_movement(mut enemy_query: Query<(&mut Transform, &Cactus)>, time: Res<Time>) {
-    for (mut transform, enemy) in enemy_query.iter_mut() {
-        println!("{}", time.delta_seconds());
-        if enemy.direction == Direction::Left {
-            transform.translation.x -= 225. * time.delta_seconds();
-        } else {
-            transform.translation.x = 201.;
+fn enemy_movement(mut enemy_query: Query<(&mut Transform, &mut Cactus)>, time: Res<Time>) {
+    for (mut transform, mut enemy) in enemy_query.iter_mut() {
+        match enemy.direction {
+            Direction::Left => transform.translation.x -= 125. * time.delta_seconds(),
+            Direction::Right(0) => {
+                transform.translation.x = 201.;
+                enemy.direction = Direction::Left;
+            }
+            Direction::Right(n) => {
+                enemy.direction = Direction::Right(n - 1);
+            }
         }
     }
 }
@@ -264,7 +276,7 @@ fn enemy_bounds(
     for (transform, mut enemy) in enemy_query.iter_mut() {
         let translation = transform.translation;
         if translation.x < -200.0 {
-            enemy.direction = Direction::Right;
+            enemy.direction = Direction::Right(random::<usize>() % 25);
         }
         if translation.x > 200.0 {
             enemy.direction = Direction::Left;
