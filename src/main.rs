@@ -283,10 +283,10 @@ fn reset_game(
 fn jump_system_recieve(input: Res<ButtonInput<KeyCode>>, mut player_query: Query<&mut Dino>) {
     if let Ok(mut transform) = player_query.get_single_mut() {
         if transform.jump == JumpDirection::None {
-            if input.just_pressed(KeyCode::Space) || input.just_pressed(KeyCode::ArrowUp) {
+            if input.just_pressed(KeyCode::Space) || input.just_pressed(KeyCode::ArrowUp) || input.just_pressed(KeyCode::KeyJ) {
                 transform.jump = JumpDirection::Down(JumpInnerDirection::Go(16))
             }
-            if input.just_pressed(KeyCode::ArrowDown) {
+            if input.just_pressed(KeyCode::ArrowDown) || input.just_pressed(KeyCode::KeyK) {
                 transform.jump = JumpDirection::Up(JumpInnerDirection::Go(16))
             }
         }
